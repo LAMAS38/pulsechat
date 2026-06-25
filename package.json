@@ -1,0 +1,21 @@
+{
+  "name": "cloudflare-chat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:frontend": "npm run build --prefix frontend",
+    "dev": "npm run build:frontend && wrangler dev",
+    "deploy": "npm run build:frontend && wrangler deploy",
+    "typecheck": "tsc --noEmit && npm run typecheck --prefix frontend"
+  },
+  "dependencies": {
+    "hono": "^4.12.27"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260625.1",
+    "@types/node": "^22.20.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.86.0"
+  }
+}
