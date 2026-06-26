@@ -41,6 +41,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
 
@@ -48,9 +49,38 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const connectionIdRef = useRef(0);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
+  const connectTimeoutRef = useRef<number | null>(null);
+  const historyTimeoutRef = useRef<number | null>(null);
   const intentionalCloseRef = useRef(false);
   const usernameRef = useRef(username);
   usernameRef.current = username;
+
+  const clearConnectTimeout = useCallback(() => {
+    if (connectTimeoutRef.current !== null) {
+      window.clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearHistoryTimeout = useCallback(() => {
+    if (historyTimeoutRef.current !== null) {
+      window.clearTimeout(historyTimeoutRef.current);
+      historyTimeoutRef.current = null;
+    }
+  }, []);
+
+  const markHistoryLoaded = useCallback(() => {
+    clearHistoryTimeout();
+    setHistoryLoaded(true);
+  }, [clearHistoryTimeout]);
+
+  const scheduleHistoryFallback = useCallback(() => {
+    clearHistoryTimeout();
+    historyTimeoutRef.current = window.setTimeout(() => {
+      historyTimeoutRef.current = null;
+      setHistoryLoaded(true);
+    }, 4_000);
+  }, [clearHistoryTimeout]);
 
   const pushActivityToast = useCallback((kind: ActivityToast["kind"], name: string) => {
     if (name === usernameRef.current) return;
@@ -70,12 +100,13 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   }, []);
 
   const closeActiveSocket = useCallback(() => {
+    clearConnectTimeout();
     const ws = wsRef.current;
     wsRef.current = null;
     if (!ws) return;
     detachWebSocket(ws);
     ws.close();
-  }, []);
+  }, [clearConnectTimeout]);
 
   const setTransientError = useCallback((message: string) => {
     if (reconnectAttemptRef.current >= ERROR_AFTER_ATTEMPTS) {
@@ -88,6 +119,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
 
     if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
       setConnectionStatus("disconnected");
+      setHistoryLoaded(true);
       setError("Connexion impossible. Réessayez ou rechargez la page.");
       return;
     }
@@ -122,17 +154,28 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     setConnectionStatus(isFirstAttempt ? "connecting" : "reconnecting");
     if (isFirstAttempt) {
       setError(null);
+      scheduleHistoryFallback();
     }
 
     const ws = new WebSocket(buildWebSocketUrl(slug, username));
     wsRef.current = ws;
 
+    connectTimeoutRef.current = window.setTimeout(() => {
+      connectTimeoutRef.current = null;
+      if (ws.readyState === WebSocket.CONNECTING) {
+        detachWebSocket(ws);
+        ws.close();
+      }
+    }, 12_000);
+
     ws.onopen = () => {
       if (connectionId !== connectionIdRef.current) return;
 
+      clearConnectTimeout();
       reconnectAttemptRef.current = 0;
       setConnectionStatus("connected");
       setError(null);
+      scheduleHistoryFallback();
     };
 
     ws.onmessage = (event) => {
@@ -145,19 +188,24 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       switch (serverEvent.type) {
         case "history":
           setMessages(serverEvent.messages);
+          markHistoryLoaded();
           break;
         case "message":
+          markHistoryLoaded();
           setMessages((prev) => [...prev, serverEvent.message]);
           break;
         case "join":
+          markHistoryLoaded();
           pushActivityToast("join", serverEvent.username);
           setUserCount(serverEvent.userCount);
           break;
         case "leave":
+          markHistoryLoaded();
           pushActivityToast("leave", serverEvent.username);
           setUserCount(serverEvent.userCount);
           break;
         case "users":
+          markHistoryLoaded();
           setUserCount(serverEvent.count);
           setConnectedUsers(serverEvent.usernames);
           break;
@@ -171,6 +219,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
           });
           break;
         case "error":
+          markHistoryLoaded();
           setError(serverEvent.message);
           break;
       }
@@ -179,6 +228,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     ws.onclose = (event) => {
       if (connectionId !== connectionIdRef.current) return;
 
+      clearConnectTimeout();
       wsRef.current = null;
 
       if (intentionalCloseRef.current) {
@@ -207,8 +257,10 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       intentionalCloseRef.current = true;
       connectionIdRef.current += 1;
       clearReconnectTimer();
+      clearHistoryTimeout();
       closeActiveSocket();
       setConnectionStatus("disconnected");
+      setHistoryLoaded(false);
       setError(null);
       return;
     }
@@ -216,6 +268,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     intentionalCloseRef.current = false;
     reconnectAttemptRef.current = 0;
     setError(null);
+    setHistoryLoaded(false);
     setMessages([]);
     setTypingUsers([]);
     setUserCount(0);
@@ -227,9 +280,17 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       intentionalCloseRef.current = true;
       connectionIdRef.current += 1;
       clearReconnectTimer();
+      clearHistoryTimeout();
       closeActiveSocket();
     };
-  }, [slug, username, enabled, clearReconnectTimer, closeActiveSocket]);
+  }, [
+    slug,
+    username,
+    enabled,
+    clearReconnectTimer,
+    clearHistoryTimeout,
+    closeActiveSocket,
+  ]);
 
   const sendMessage = useCallback((content: string) => {
     const ws = wsRef.current;
@@ -263,6 +324,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     connectedUsers,
     typingUsers,
     connectionStatus,
+    historyLoaded,
     error,
     sendMessage,
     setTyping,

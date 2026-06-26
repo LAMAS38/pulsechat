@@ -60,6 +60,7 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
   const isTypingRef = useRef(false);
   const slugRef = useRef(slug);
   const valueRef = useRef(value);
+  const composeAreaRef = useRef<HTMLDivElement>(null);
   const emojiOpenRef = useRef(emojiOpen);
   valueRef.current = value;
   emojiOpenRef.current = emojiOpen;
@@ -214,7 +215,6 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
       if (emojiTriggerRef.current?.contains(target)) return;
       if (isMobile) {
         setEmojiOpen(false);
-        resetViewportAfterOverlay();
         return;
       }
       if (composeRef.current?.contains(target)) return;
@@ -229,7 +229,9 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
     (options?: { focusInput?: boolean }) => {
       const focusInput = options?.focusInput ?? !isMobile;
       setEmojiOpen(false);
-      resetViewportAfterOverlay();
+      if (!isMobile) {
+        resetViewportAfterOverlay();
+      }
 
       if (!focusInput || disabled) return;
 
@@ -289,7 +291,7 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
     stopTyping();
     selectionRef.current = { start: 0, end: 0 };
     requestAnimationFrame(resizeTextarea);
-    textareaRef.current?.focus();
+    textareaRef.current?.focus({ preventScroll: true });
   };
 
   const submit = () => {
@@ -359,14 +361,14 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
     ) : null;
 
   return (
-    <div className="chat-compose-area">
+    <div ref={composeAreaRef} className="chat-compose-area">
       <form
         ref={composeRef}
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
           submit();
         }}
-        className={`chat-compose-form safe-bottom relative z-30 shrink-0 border-t border-white/[0.06] bg-[#0a0a10] px-3 md:bg-[#0a0a10]/95 md:px-5 md:py-3 md:backdrop-blur-xl lg:px-6 lg:py-4 ${emojiOpen && isMobile ? "chat-compose-form-emoji-open chat-compose-form-emoji-mode py-2" : "py-2.5"}`}
+        className={`chat-compose-form relative z-30 shrink-0 border-t border-white/[0.06] bg-[#0a0a10] px-3 md:bg-[#0a0a10]/95 md:px-5 md:py-3 md:safe-bottom md:backdrop-blur-xl lg:px-6 lg:py-4 ${emojiOpen && isMobile ? "chat-compose-form-emoji-open chat-compose-form-emoji-mode py-2" : "py-2.5"} ${isMobile ? "chat-compose-form-mobile" : "safe-bottom"}`}
       >
         {showMobileEmoji && (
           <div className="compose-emoji-inline">
@@ -441,6 +443,10 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
               value={value}
               readOnly={disabled || (isMobile && emojiOpen)}
               inputMode={isMobile && emojiOpen ? "none" : "text"}
+              enterKeyHint="send"
+              onTouchStart={(e) => {
+                if (isMobile && emojiOpen) e.preventDefault();
+              }}
               onChange={(e) => {
                 const el = e.target;
                 const sel = readTextareaSelection(el);
@@ -456,9 +462,6 @@ export function MessageInput({ slug, disabled, onSend, onTyping }: MessageInputP
                   return;
                 }
                 setFocused(true);
-                if (isMobile) {
-                  requestAnimationFrame(() => window.scrollTo(0, 0));
-                }
               }}
               onBlur={() => {
                 if (isMobile && emojiOpen) return;

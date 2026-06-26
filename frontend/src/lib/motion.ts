@@ -21,6 +21,13 @@ export const pageVariants: Variants = {
   exit: { opacity: 0, y: -8, filter: "blur(4px)", transition: { duration: 0.22 } },
 };
 
+/** Sans transform/filter : iOS Safari casse position:fixed sur les ancêtres transformés. */
+export const chatPageVariants: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: easeOut },
+  exit: { opacity: 0, transition: { duration: 0.22 } },
+};
+
 export const staggerContainer: Variants = {
   initial: {},
   animate: {

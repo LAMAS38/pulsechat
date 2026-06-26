@@ -4,7 +4,7 @@ import { AppShell } from "./components/AppShell";
 import { ChatLayout } from "./components/ChatLayout";
 import { ViewportProvider } from "./components/ViewportProvider";
 import { HomePage } from "./pages/HomePage";
-import { pageVariants } from "./lib/motion";
+import { chatPageVariants, pageVariants } from "./lib/motion";
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -31,7 +31,7 @@ function AnimatedRoutes() {
           element={
             <motion.div
               className="chat-page-root h-app min-h-app"
-              variants={pageVariants}
+              variants={chatPageVariants}
               initial="initial"
               animate="animate"
               exit="exit"

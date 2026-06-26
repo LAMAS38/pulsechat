@@ -17,6 +17,7 @@ import { ActivityToasts } from "./ActivityToasts";
 import { ConnectedUsers } from "./ConnectedUsers";
 import { ConnectionStatus, statusDotClass } from "./ConnectionStatus";
 import { ErrorBanner } from "./ErrorBanner";
+import { MobileChatDock } from "./MobileChatDock";
 import { MembersSheet } from "./MembersSheet";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
@@ -92,6 +93,7 @@ export function ChatLayout() {
     connectedUsers,
     typingUsers,
     connectionStatus,
+    historyLoaded,
     error,
     sendMessage,
     setTyping,
@@ -111,10 +113,23 @@ export function ChatLayout() {
     jsonLd: slugValidation.valid ? roomJsonLd(slug) : undefined,
   });
 
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!chatEnabled) {
+      setLoadTimedOut(false);
+      return;
+    }
+    setLoadTimedOut(false);
+    const id = window.setTimeout(() => setLoadTimedOut(true), 10_000);
+    return () => window.clearTimeout(id);
+  }, [chatEnabled, slug, username]);
+
   const isLoadingHistory =
     chatEnabled &&
-    messages.length === 0 &&
-    (connectionStatus === "connecting" || connectionStatus === "reconnecting");
+    !historyLoaded &&
+    !loadTimedOut &&
+    connectionStatus === "connecting";
 
   const showError =
     error &&
@@ -172,9 +187,9 @@ export function ChatLayout() {
       </AnimatePresence>
 
       <motion.header
-        className="room-header safe-top sticky top-0 z-30 flex shrink-0 items-center justify-between gap-1.5 overflow-visible border-b px-3 py-2.5 backdrop-blur-xl sm:gap-2 sm:px-4 sm:py-3 md:gap-3 md:px-5"
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
+        className="room-header safe-top z-30 flex shrink-0 items-center justify-between gap-1.5 overflow-visible border-b px-3 py-2.5 backdrop-blur-xl sm:gap-2 sm:px-4 sm:py-3 md:sticky md:top-0 md:gap-3 md:px-5"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={springSnappy}
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-visible sm:gap-3">
@@ -232,32 +247,37 @@ export function ChatLayout() {
         )}
       </AnimatePresence>
 
-      <div className="relative flex min-h-0 flex-1">
+      <div className="chat-body">
         <ActivityToasts toasts={activityToasts} />
 
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="chat-shell">
-            <MessageList
-              messages={messages}
-              currentUsername={username ?? ""}
-              slug={slug}
-              theme={theme}
-              connectionStatus={connectionStatus}
-              isLoadingHistory={isLoadingHistory}
-            />
-            <div className="shrink-0 border-t border-white/[0.04] bg-[#0a0a10]/50 px-3 pt-1.5 md:px-5 lg:px-6">
-              <TypingIndicator usernames={typingUsers} currentUsername={username ?? ""} />
+        <div className="chat-messages-pane relative">
+          <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="chat-shell flex min-h-0 flex-1 flex-col overflow-hidden">
+              <MessageList
+                messages={messages}
+                currentUsername={username ?? ""}
+                slug={slug}
+                theme={theme}
+                connectionStatus={connectionStatus}
+                isLoadingHistory={isLoadingHistory}
+              />
             </div>
-            <MessageInput
-              slug={slug}
-              disabled={!chatEnabled || connectionStatus !== "connected"}
-              onSend={sendMessage}
-              onTyping={setTyping}
-            />
-          </div>
-        </main>
-        <ConnectedUsers usernames={connectedUsers} currentUsername={username ?? ""} />
+          </main>
+          <ConnectedUsers usernames={connectedUsers} currentUsername={username ?? ""} />
+        </div>
       </div>
+
+      <MobileChatDock>
+        <div className="chat-dock-typing md:px-5 lg:px-6">
+          <TypingIndicator usernames={typingUsers} currentUsername={username ?? ""} />
+        </div>
+        <MessageInput
+          slug={slug}
+          disabled={!chatEnabled || connectionStatus !== "connected"}
+          onSend={sendMessage}
+          onTyping={setTyping}
+        />
+      </MobileChatDock>
 
       <MembersSheet
         open={membersOpen}

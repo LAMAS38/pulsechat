@@ -1,6 +1,10 @@
 export function ChatSkeleton() {
   return (
-    <div className="flex flex-1 flex-col gap-4 px-4 py-6 sm:px-6" aria-hidden>
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 px-4 py-6 sm:px-6"
+      aria-busy="true"
+      aria-label="Chargement des messages"
+    >
       {[false, true, false, true].map((alignRight, i) => (
         <div
           key={i}

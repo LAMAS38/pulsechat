@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -13,6 +13,8 @@ import type { ConnectionStatus as Status } from "../hooks/useChatWebSocket";
 import type { Message } from "../types";
 
 import { scaleIn } from "../lib/motion";
+
+import { CHAT_MOBILE_FRAME_SYNC } from "../lib/mobileChatFrame";
 
 import { ChatSkeleton } from "./ChatSkeleton";
 
@@ -63,6 +65,17 @@ export function MessageList({
     messages.length,
 
   );
+
+  useEffect(() => {
+    const onFrameSync = () => {
+      const composeFocused = Boolean(document.activeElement?.closest(".chat-compose-area"));
+      if (composeFocused) {
+        scrollToBottom("auto");
+      }
+    };
+    window.addEventListener(CHAT_MOBILE_FRAME_SYNC, onFrameSync);
+    return () => window.removeEventListener(CHAT_MOBILE_FRAME_SYNC, onFrameSync);
+  }, [scrollToBottom]);
 
 
 

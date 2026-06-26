@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Code2, Gamepad2, MessageCircle, MessageSquarePlus, Shuffle, Sparkles, type LucideIcon } from "lucide-react";
@@ -42,6 +42,11 @@ export function HomePage() {
   const navigate = useNavigate();
   const [slugInput, setSlugInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.documentElement.classList.add("home-page");
+    return () => document.documentElement.classList.remove("home-page");
+  }, []);
 
   const previewTheme = useMemo(
     () => getRoomTheme(slugInput.length >= 3 ? slugInput : "preview"),
@@ -129,7 +134,7 @@ export function HomePage() {
 
             <form
               onSubmit={handleCreate}
-              className="mt-4 flex flex-col gap-3 md:flex-row md:items-stretch"
+              className="join-room-form mt-4 flex flex-col gap-3 md:flex-row md:items-stretch"
             >
               <div className="input-field-group min-w-0 flex-1">
                 <label htmlFor="room-slug" className="sr-only">
@@ -141,10 +146,12 @@ export function HomePage() {
                 <input
                   id="room-slug"
                   type="text"
-                  inputMode="url"
+                  inputMode="text"
                   autoCapitalize="off"
                   autoCorrect="off"
+                  autoComplete="off"
                   spellCheck={false}
+                  enterKeyHint="go"
                   value={slugInput}
                   onChange={(e) => {
                     setSlugInput(normalizeSlug(e.target.value));
@@ -152,7 +159,7 @@ export function HomePage() {
                   }}
                   placeholder="mon-salon"
                   maxLength={32}
-                  className="input-field-inner font-mono text-base md:text-sm"
+                  className="input-field-inner"
                 />
               </div>
               <motion.button

@@ -60,6 +60,17 @@ export class ChatRoom extends DurableObject<Env> {
     const attachment: SessionAttachment = { username, roomSlug };
     this.ctx.acceptWebSocket(server, [JSON.stringify(attachment)]);
 
+    // Historique après le 101 — waitUntil garantit l'envoi côté Worker.
+    this.ctx.waitUntil(this.bootstrapConnection(server, roomSlug, username));
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async bootstrapConnection(
+    server: WebSocket,
+    roomSlug: string,
+    username: string,
+  ): Promise<void> {
     await this.sendHistory(server, roomSlug);
     this.broadcast(
       {
@@ -70,8 +81,6 @@ export class ChatRoom extends DurableObject<Env> {
       server,
     );
     this.broadcastUsers();
-
-    return new Response(null, { status: 101, webSocket: client });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
