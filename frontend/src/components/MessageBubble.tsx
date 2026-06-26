@@ -1,14 +1,26 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
+import { Check, CheckCheck } from "lucide-react";
 import type { Message } from "../types";
 import { springSnappy } from "../lib/motion";
 import { Avatar } from "./Avatar";
+import { AppIcon } from "./ui/icon";
 
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
   showAvatar: boolean;
   animate?: boolean;
+  /** Pseudos ayant vu le message (uniquement pour les messages envoyés). */
+  seenBy?: string[];
+}
+
+function formatSeenLabel(seenBy: string[]): string {
+  if (seenBy.length === 1) return `Vu par ${seenBy[0]}`;
+  if (seenBy.length <= 3) {
+    return `Vu par ${seenBy.slice(0, -1).join(", ")} et ${seenBy[seenBy.length - 1]}`;
+  }
+  return `Vu par ${seenBy.slice(0, 2).join(", ")} et ${seenBy.length - 2} autres`;
 }
 
 function formatTime(iso: string): string {
@@ -22,7 +34,9 @@ export const MessageBubble = memo(function MessageBubble({
   isOwn,
   showAvatar,
   animate = false,
+  seenBy,
 }: MessageBubbleProps) {
+  const seenCount = seenBy?.length ?? 0;
   return (
     <motion.article
       className={`flex gap-2.5 ${isOwn ? "flex-row-reverse" : "flex-row"}`}
@@ -62,12 +76,32 @@ export const MessageBubble = memo(function MessageBubble({
             {message.content}
           </p>
         </motion.div>
-        <time
-          className={`mt-1.5 px-1 text-[11px] text-white/45 ${isOwn ? "text-right" : ""}`}
-          dateTime={message.createdAt}
+        <div
+          className={`mt-1.5 flex items-center gap-1.5 px-1 text-[11px] text-white/45 ${
+            isOwn ? "flex-row-reverse" : ""
+          }`}
         >
-          {formatTime(message.createdAt)}
-        </time>
+          <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+          {isOwn &&
+            (seenCount > 0 ? (
+              <span
+                className="inline-flex items-center gap-0.5 text-sky-400"
+                title={formatSeenLabel(seenBy!)}
+                aria-label={formatSeenLabel(seenBy!)}
+              >
+                <AppIcon icon={CheckCheck} size="sm" className="h-3.5 w-3.5" />
+                <span className="tabular-nums font-medium">{seenCount}</span>
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center text-white/35"
+                title="Envoyé"
+                aria-label="Envoyé"
+              >
+                <AppIcon icon={Check} size="sm" className="h-3.5 w-3.5" />
+              </span>
+            ))}
+        </div>
       </div>
     </motion.article>
   );

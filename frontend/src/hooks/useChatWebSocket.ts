@@ -6,8 +6,9 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "re
 
 export interface ActivityToast {
   id: string;
-  kind: "join" | "leave";
+  kind: "join" | "leave" | "notice";
   username: string;
+  text?: string;
 }
 
 interface UseChatWebSocketOptions {
@@ -22,10 +23,11 @@ const MAX_RECONNECT_ATTEMPTS = 8;
 /** N'afficher une alerte qu'après plusieurs échecs (évite les faux positifs à l'entrée). */
 const ERROR_AFTER_ATTEMPTS = 2;
 
-function buildWebSocketUrl(slug: string, username: string): string {
+function buildWebSocketUrl(slug: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const params = new URLSearchParams({ username });
-  return `${protocol}//${window.location.host}/r/${encodeURIComponent(slug)}/ws?${params.toString()}`;
+  // Le pseudo n'est plus passé en clair : l'identité est dérivée côté serveur
+  // depuis le cookie de session signé (envoyé automatiquement au handshake).
+  return `${protocol}//${window.location.host}/r/${encodeURIComponent(slug)}/ws`;
 }
 
 function detachWebSocket(ws: WebSocket): void {
@@ -40,10 +42,13 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const [userCount, setUserCount] = useState(0);
   const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [reads, setReads] = useState<Record<string, number>>({});
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
+  const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const connectionIdRef = useRef(0);
@@ -54,6 +59,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const intentionalCloseRef = useRef(false);
   const usernameRef = useRef(username);
   usernameRef.current = username;
+  const lastReadSentRef = useRef(0);
 
   const clearConnectTimeout = useCallback(() => {
     if (connectTimeoutRef.current !== null) {
@@ -90,6 +96,14 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     window.setTimeout(() => {
       setActivityToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3200);
+  }, []);
+
+  const pushNotice = useCallback((text: string) => {
+    const id = crypto.randomUUID();
+    setActivityToasts((prev) => [...prev.slice(-2), { id, kind: "notice", username: "", text }]);
+    window.setTimeout(() => {
+      setActivityToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4200);
   }, []);
 
   const clearReconnectTimer = useCallback(() => {
@@ -157,7 +171,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       scheduleHistoryFallback();
     }
 
-    const ws = new WebSocket(buildWebSocketUrl(slug, username));
+    const ws = new WebSocket(buildWebSocketUrl(slug));
     wsRef.current = ws;
 
     connectTimeoutRef.current = window.setTimeout(() => {
@@ -218,6 +232,34 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
             return [...prev, serverEvent.username];
           });
           break;
+        case "reads":
+          setReads(() => {
+            const next: Record<string, number> = {};
+            for (const receipt of serverEvent.reads) {
+              next[receipt.username] = receipt.lastReadId;
+            }
+            return next;
+          });
+          break;
+        case "read":
+          setReads((prev) => {
+            const current = prev[serverEvent.username] ?? 0;
+            if (serverEvent.lastReadId <= current) return prev;
+            return { ...prev, [serverEvent.username]: serverEvent.lastReadId };
+          });
+          break;
+        case "room":
+          setOwnerUsername(serverEvent.ownerUsername);
+          setIsOwner(serverEvent.isOwner);
+          break;
+        case "cleared":
+          markHistoryLoaded();
+          setMessages([]);
+          setReads({});
+          break;
+        case "notice":
+          pushNotice(serverEvent.message);
+          break;
         case "error":
           markHistoryLoaded();
           setError(serverEvent.message);
@@ -273,7 +315,11 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     setTypingUsers([]);
     setUserCount(0);
     setConnectedUsers([]);
+    setReads({});
+    lastReadSentRef.current = 0;
     setActivityToasts([]);
+    setOwnerUsername(null);
+    setIsOwner(false);
     connectRef.current();
 
     return () => {
@@ -307,6 +353,27 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     ws.send(serializeEvent({ type: "typing", isTyping }));
   }, []);
 
+  const sendRead = useCallback((lastReadId: number) => {
+    if (!Number.isFinite(lastReadId) || lastReadId <= lastReadSentRef.current) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    lastReadSentRef.current = lastReadId;
+    ws.send(serializeEvent({ type: "read", lastReadId }));
+  }, []);
+
+  const clearRoom = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(serializeEvent({ type: "clear_room" }));
+  }, []);
+
+  const banUser = useCallback((target: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(serializeEvent({ type: "ban", username: target }));
+  }, []);
+
   const dismissError = useCallback(() => setError(null), []);
 
   const reconnect = useCallback(() => {
@@ -323,11 +390,17 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     userCount,
     connectedUsers,
     typingUsers,
+    reads,
     connectionStatus,
     historyLoaded,
     error,
+    ownerUsername,
+    isOwner,
     sendMessage,
     setTyping,
+    sendRead,
+    clearRoom,
+    banUser,
     dismissError,
     reconnect,
     activityToasts,

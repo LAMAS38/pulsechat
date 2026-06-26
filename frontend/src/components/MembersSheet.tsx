@@ -13,9 +13,20 @@ interface MembersSheetProps {
   onClose: () => void;
   usernames: string[];
   currentUsername: string;
+  ownerUsername?: string | null;
+  canModerate?: boolean;
+  onBan?: (username: string) => void;
 }
 
-export function MembersSheet({ open, onClose, usernames, currentUsername }: MembersSheetProps) {
+export function MembersSheet({
+  open,
+  onClose,
+  usernames,
+  currentUsername,
+  ownerUsername = null,
+  canModerate = false,
+  onBan,
+}: MembersSheetProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   useBodyScrollLock(open);
 
@@ -101,7 +112,14 @@ export function MembersSheet({ open, onClose, usernames, currentUsername }: Memb
               </button>
             </div>
             <div className="overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
-              <UserList usernames={usernames} currentUsername={currentUsername} compact />
+              <UserList
+                usernames={usernames}
+                currentUsername={currentUsername}
+                ownerUsername={ownerUsername}
+                canModerate={canModerate}
+                onBan={onBan}
+                compact
+              />
             </div>
           </motion.div>
         </motion.div>

@@ -8,6 +8,17 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_created
   ON messages (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS message_reads (
+  username TEXT PRIMARY KEY,
+  last_read_id INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bans (
+  user_id  TEXT PRIMARY KEY,
+  username TEXT NOT NULL,
+  banned_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export function initMessageSchema(sql: DurableObjectStorage["sql"]): void {

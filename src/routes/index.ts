@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { registerAuthRoutes } from "./auth";
 import { registerRoomRoutes } from "./room";
 
 function isStaticAssetPath(pathname: string): boolean {
@@ -11,6 +12,7 @@ export function createApp() {
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  registerAuthRoutes(app);
   registerRoomRoutes(app);
 
   app.all("*", async (c) => {

@@ -13,6 +13,16 @@ class_name = "ChatRoom"
 tag = "v1"
 new_sqlite_classes = ["ChatRoom"]
 
+# Base D1 globale pour les comptes utilisateurs.
+# 1) Créez la base :   wrangler d1 create pulsechat
+# 2) Collez l'id renvoyé dans database_id ci-dessous
+# 3) Appliquez le schéma : wrangler d1 migrations apply pulsechat --local  (puis sans --local pour la prod)
+[[d1_databases]]
+binding = "DB"
+database_name = "pulsechat"
+database_id = "REMPLACER_PAR_VOTRE_DATABASE_ID"
+migrations_dir = "migrations"
+
 [assets]
 directory = "./frontend/dist"
 not_found_handling = "single-page-application"

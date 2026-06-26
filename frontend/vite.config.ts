@@ -15,6 +15,7 @@ export default defineConfig({
     host: true, // accessible depuis iPhone sur le même Wi‑Fi (http://IP-DU-PC:5173)
     proxy: {
       "/health": "http://127.0.0.1:8787",
+      "/auth": "http://127.0.0.1:8787",
       "/r": {
         target: "http://127.0.0.1:8787",
         ws: true,

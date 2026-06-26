@@ -6,6 +6,12 @@ export interface Message {
   createdAt: string;
 }
 
+/** Dernier message lu par un utilisateur (accusés de lecture). */
+export interface ReadReceipt {
+  username: string;
+  lastReadId: number;
+}
+
 export interface MessageRow {
   id: number;
   room_slug: string;

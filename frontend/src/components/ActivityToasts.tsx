@@ -1,8 +1,20 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { UserMinus, UserPlus } from "lucide-react";
+import { ShieldAlert, UserMinus, UserPlus } from "lucide-react";
 import type { ActivityToast } from "../hooks/useChatWebSocket";
 import { springSnappy } from "../lib/motion";
 import { AppIcon } from "./ui/icon";
+
+const TOAST_ICON = {
+  join: UserPlus,
+  leave: UserMinus,
+  notice: ShieldAlert,
+} as const;
+
+const TOAST_ICON_CLASS = {
+  join: "text-emerald-400",
+  leave: "text-white/45",
+  notice: "text-amber-400",
+} as const;
 
 interface ActivityToastsProps {
   toasts: ActivityToast[];
@@ -26,15 +38,19 @@ export function ActivityToasts({ toasts }: ActivityToastsProps) {
             transition={springSnappy}
           >
             <AppIcon
-              icon={toast.kind === "join" ? UserPlus : UserMinus}
+              icon={TOAST_ICON[toast.kind]}
               size="sm"
-              className={toast.kind === "join" ? "text-emerald-400" : "text-white/45"}
+              className={TOAST_ICON_CLASS[toast.kind]}
               aria-hidden
             />
-            <span>
-              <strong className="font-medium text-white">{toast.username}</strong>
-              {toast.kind === "join" ? " a rejoint le salon" : " a quitté le salon"}
-            </span>
+            {toast.kind === "notice" ? (
+              <span className="text-white/85">{toast.text}</span>
+            ) : (
+              <span>
+                <strong className="font-medium text-white">{toast.username}</strong>
+                {toast.kind === "join" ? " a rejoint le salon" : " a quitté le salon"}
+              </span>
+            )}
           </motion.div>
         ))}
       </AnimatePresence>

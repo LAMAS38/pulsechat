@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { AppShell } from "./components/AppShell";
 import { ChatLayout } from "./components/ChatLayout";
 import { ViewportProvider } from "./components/ViewportProvider";
+import { AuthProvider } from "./hooks/useAuth";
 import { HomePage } from "./pages/HomePage";
 import { chatPageVariants, pageVariants } from "./lib/motion";
 
@@ -50,11 +51,13 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <ViewportProvider>
-        <BrowserRouter>
-          <AppShell>
-            <AnimatedRoutes />
-          </AppShell>
-        </BrowserRouter>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppShell>
+              <AnimatedRoutes />
+            </AppShell>
+          </BrowserRouter>
+        </AuthProvider>
       </ViewportProvider>
     </MotionConfig>
   );

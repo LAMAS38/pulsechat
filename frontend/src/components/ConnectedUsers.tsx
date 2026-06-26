@@ -4,9 +4,18 @@ import { UserList } from "./UserList";
 interface ConnectedUsersProps {
   usernames: string[];
   currentUsername: string;
+  ownerUsername?: string | null;
+  canModerate?: boolean;
+  onBan?: (username: string) => void;
 }
 
-export function ConnectedUsers({ usernames, currentUsername }: ConnectedUsersProps) {
+export function ConnectedUsers({
+  usernames,
+  currentUsername,
+  ownerUsername = null,
+  canModerate = false,
+  onBan,
+}: ConnectedUsersProps) {
   return (
     <motion.aside
       className="hidden w-44 shrink-0 flex-col border-l border-white/[0.06] bg-white/[0.02] md:flex lg:w-60"
@@ -30,7 +39,13 @@ export function ConnectedUsers({ usernames, currentUsername }: ConnectedUsersPro
         </motion.p>
       </div>
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        <UserList usernames={usernames} currentUsername={currentUsername} />
+        <UserList
+          usernames={usernames}
+          currentUsername={currentUsername}
+          ownerUsername={ownerUsername}
+          canModerate={canModerate}
+          onBan={onBan}
+        />
       </div>
     </motion.aside>
   );

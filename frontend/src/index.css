@@ -595,6 +595,63 @@ body {
   transform: none;
 }
 
+/* Champ avec icône en tête (auth) — réutilise le look .input-field */
+.auth-field {
+  position: relative;
+  display: block;
+}
+
+.auth-field-icon {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  width: 2.875rem;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+  transition: color 0.15s;
+}
+
+.auth-field:focus-within .auth-field-icon {
+  color: rgba(192, 132, 252, 0.85);
+}
+
+.auth-field .input-field {
+  padding-left: 2.875rem;
+}
+
+.auth-field-has-action .input-field {
+  padding-right: 3rem;
+}
+
+.auth-field-action {
+  position: absolute;
+  inset-block: 0;
+  right: 0.375rem;
+  z-index: 1;
+  display: flex;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  color: rgba(255, 255, 255, 0.4);
+  background: transparent;
+  transition: color 0.15s, background 0.15s;
+}
+
+.auth-field-action:hover {
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.auth-field-action:focus-visible {
+  outline: 2px solid rgba(192, 132, 252, 0.7);
+  outline-offset: 1px;
+}
+
 .chat-compose-row {
   display: flex;
   align-items: flex-end;

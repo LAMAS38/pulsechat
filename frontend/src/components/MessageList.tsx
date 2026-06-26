@@ -40,6 +40,10 @@ interface MessageListProps {
 
   isLoadingHistory: boolean;
 
+  reads: Record<string, number>;
+
+  onRead: (lastReadId: number) => void;
+
 }
 
 
@@ -57,6 +61,10 @@ export function MessageList({
   connectionStatus,
 
   isLoadingHistory,
+
+  reads,
+
+  onRead,
 
 }: MessageListProps) {
 
@@ -82,6 +90,25 @@ export function MessageList({
   const groups = useMemo(() => groupMessagesByDate(messages), [messages]);
 
   const lastMessageId = messages[messages.length - 1]?.id;
+
+  const atBottom = !showScrollFab;
+
+  const readerEntries = useMemo(() => Object.entries(reads), [reads]);
+
+  useEffect(() => {
+    if (lastMessageId === undefined) return;
+    if (!atBottom) return;
+
+    const reportIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        onRead(lastMessageId);
+      }
+    };
+
+    reportIfVisible();
+    document.addEventListener("visibilitychange", reportIfVisible);
+    return () => document.removeEventListener("visibilitychange", reportIfVisible);
+  }, [lastMessageId, atBottom, onRead]);
 
 
 
@@ -185,6 +212,16 @@ export function MessageList({
 
               const showAvatar = !isOwn && (!prev || prev.username !== message.username);
 
+              const seenBy = isOwn
+
+                ? readerEntries
+
+                    .filter(([name, last]) => name !== currentUsername && last >= message.id)
+
+                    .map(([name]) => name)
+
+                : undefined;
+
 
 
               return (
@@ -200,6 +237,8 @@ export function MessageList({
                   showAvatar={showAvatar}
 
                   animate={message.id === lastMessageId}
+
+                  seenBy={seenBy}
 
                 />
 

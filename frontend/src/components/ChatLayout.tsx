@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Check, Share2, Users } from "lucide-react";
-import { validateSlug, validateUsername } from "@shared/slug";
+import { ArrowLeft, Check, LogOut, Share2, Trash2, Users } from "lucide-react";
+import { validateSlug } from "@shared/slug";
+import { useAuth } from "../hooks/useAuth";
 import { useChatViewportLock } from "../hooks/useChatViewportLock";
 import { useChatWebSocket } from "../hooks/useChatWebSocket";
 import { useSeo } from "../hooks/useSeo";
 import { getRoomTheme, roomThemeStyle } from "../lib/roomTheme";
 import { roomJsonLd, SITE } from "../lib/seo";
-import {
-  clearStoredUsername,
-  getStoredUsername,
-  setStoredUsername,
-} from "../lib/username";
 import { ActivityToasts } from "./ActivityToasts";
+import { AuthModal } from "./AuthModal";
+import { Avatar } from "./Avatar";
 import { ConnectedUsers } from "./ConnectedUsers";
 import { ConnectionStatus, statusDotClass } from "./ConnectionStatus";
 import { ErrorBanner } from "./ErrorBanner";
@@ -22,7 +20,6 @@ import { MembersSheet } from "./MembersSheet";
 import { MessageInput } from "./MessageInput";
 import { MessageList } from "./MessageList";
 import { TypingIndicator } from "./TypingIndicator";
-import { UsernameModal } from "./UsernameModal";
 import { AppIcon } from "./ui/icon";
 import { fadeUp, springSnappy } from "../lib/motion";
 
@@ -72,16 +69,8 @@ export function ChatLayout() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
 
-  const [username, setUsername] = useState<string | null>(() => {
-    const stored = getStoredUsername();
-    if (!stored) return null;
-    const validation = validateUsername(stored);
-    if (!validation.valid || !validation.username) {
-      clearStoredUsername();
-      return null;
-    }
-    return validation.username;
-  });
+  const { user, status, logout } = useAuth();
+  const username = user?.username ?? null;
 
   const chatEnabled = slugValidation.valid && username !== null;
 
@@ -92,15 +81,37 @@ export function ChatLayout() {
     userCount,
     connectedUsers,
     typingUsers,
+    reads,
     connectionStatus,
     historyLoaded,
     error,
+    ownerUsername,
+    isOwner,
     sendMessage,
     setTyping,
+    sendRead,
+    clearRoom,
+    banUser,
     dismissError,
     reconnect,
     activityToasts,
   } = useChatWebSocket({ slug, username, enabled: chatEnabled });
+
+  const handleBan = (name: string) => {
+    if (
+      window.confirm(
+        `Bannir ${name} de ce salon ?\nCette personne sera déconnectée et ne pourra plus se reconnecter.`,
+      )
+    ) {
+      banUser(name);
+    }
+  };
+
+  const handleClearRoom = () => {
+    if (window.confirm("Vider tout l'historique de ce salon ?\nCette action est irréversible.")) {
+      clearRoom();
+    }
+  };
 
   useSeo({
     title: slugValidation.valid ? `${theme.emoji} #${slug}` : "Salon introuvable",
@@ -141,11 +152,6 @@ export function ChatLayout() {
     if (error) setErrorDismissed(false);
   }, [error]);
 
-  const handleUsernameSubmit = (nextUsername: string) => {
-    setStoredUsername(nextUsername);
-    setUsername(nextUsername);
-  };
-
   const handleDismissError = () => {
     setErrorDismissed(true);
     dismissError();
@@ -181,8 +187,8 @@ export function ChatLayout() {
       style={roomThemeStyle(theme)}
     >
       <AnimatePresence>
-        {!username && (
-          <UsernameModal key="username" slug={slug} theme={theme} onSubmit={handleUsernameSubmit} />
+        {status !== "loading" && !user && (
+          <AuthModal key="auth" slug={slug} theme={theme} />
         )}
       </AnimatePresence>
 
@@ -226,6 +232,42 @@ export function ChatLayout() {
             <span className="tabular-nums font-medium">{userCount}</span>
           </button>
           <ConnectionStatus status={connectionStatus} className="hidden md:flex" />
+          {isOwner && (
+            <button
+              type="button"
+              onClick={handleClearRoom}
+              className="btn-ghost btn-icon flex min-h-[40px] min-w-[40px] text-white/55 hover:text-rose-400 md:min-h-[36px] md:min-w-0 md:gap-1.5 md:px-2.5 md:text-[11px]"
+              aria-label="Vider le salon"
+              title="Vider le salon (propriétaire)"
+            >
+              <AppIcon icon={Trash2} size="sm" />
+              <span className="hidden lg:inline">Vider</span>
+            </button>
+          )}
+          {user && (
+            <div className="flex items-center gap-1.5">
+              <span className="hidden items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-2 py-1 sm:flex">
+                <Avatar username={user.username} size="sm" />
+                <span className="max-w-[120px] truncate text-xs font-medium text-white/80">
+                  {user.username}
+                </span>
+                {user.guest && (
+                  <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-white/45">
+                    invité
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="btn-ghost btn-icon flex min-h-[40px] min-w-[40px] text-white/55 md:min-h-[36px] md:min-w-0 md:px-2"
+                aria-label="Se déconnecter"
+                title="Se déconnecter"
+              >
+                <AppIcon icon={LogOut} size="sm" />
+              </button>
+            </div>
+          )}
         </div>
       </motion.header>
 
@@ -260,10 +302,18 @@ export function ChatLayout() {
                 theme={theme}
                 connectionStatus={connectionStatus}
                 isLoadingHistory={isLoadingHistory}
+                reads={reads}
+                onRead={sendRead}
               />
             </div>
           </main>
-          <ConnectedUsers usernames={connectedUsers} currentUsername={username ?? ""} />
+          <ConnectedUsers
+            usernames={connectedUsers}
+            currentUsername={username ?? ""}
+            ownerUsername={ownerUsername}
+            canModerate={isOwner}
+            onBan={handleBan}
+          />
         </div>
       </div>
 
@@ -284,6 +334,9 @@ export function ChatLayout() {
         onClose={() => setMembersOpen(false)}
         usernames={connectedUsers}
         currentUsername={username ?? ""}
+        ownerUsername={ownerUsername}
+        canModerate={isOwner}
+        onBan={handleBan}
       />
     </div>
   );

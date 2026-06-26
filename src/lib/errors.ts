@@ -3,6 +3,8 @@ import type { Env } from "../env";
 
 type AppContext = Context<{ Bindings: Env }>;
 
-export function jsonError(c: AppContext, status: 400 | 404 | 500, code: string, message: string) {
+type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500;
+
+export function jsonError(c: AppContext, status: ErrorStatus, code: string, message: string) {
   return c.json({ error: code, message }, status);
 }

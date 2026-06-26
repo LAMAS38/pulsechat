@@ -1,0 +1,3 @@
+# Copiez ce fichier vers .dev.vars (gitignoré) pour le développement local.
+# Générez une valeur aléatoire, ex. : openssl rand -hex 32
+SESSION_SECRET="votre-secret-aleatoire-ici"
