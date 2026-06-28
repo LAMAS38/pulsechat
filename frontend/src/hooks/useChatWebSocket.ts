@@ -22,6 +22,10 @@ const BASE_BACKOFF_MS = 1_000;
 const MAX_RECONNECT_ATTEMPTS = 8;
 /** N'afficher une alerte qu'après plusieurs échecs (évite les faux positifs à l'entrée). */
 const ERROR_AFTER_ATTEMPTS = 2;
+/** Délai après lequel un « X écrit… » non rafraîchi est purgé (filet anti-blocage). */
+const TYPING_TIMEOUT_MS = 6_000;
+/** Délai de grâce avant d'afficher « a quitté » : évite le bruit lors d'un simple rafraîchissement. */
+const LEAVE_GRACE_MS = 2_500;
 
 function buildWebSocketUrl(slug: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -49,6 +53,8 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
   const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  // Fermeture définitive (bannissement, session invalide) : ni reconnexion auto, ni « Réessayer ».
+  const [terminal, setTerminal] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const connectionIdRef = useRef(0);
@@ -60,6 +66,9 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
   const usernameRef = useRef(username);
   usernameRef.current = username;
   const lastReadSentRef = useRef(0);
+  const typingTimersRef = useRef<Map<string, number>>(new Map());
+  const pendingLeaveRef = useRef<Map<string, number>>(new Map());
+  const connectedUsersRef = useRef<string[]>([]);
 
   const clearConnectTimeout = useCallback(() => {
     if (connectTimeoutRef.current !== null) {
@@ -104,6 +113,29 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     window.setTimeout(() => {
       setActivityToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4200);
+  }, []);
+
+  /** Retire un utilisateur de la liste « en train d'écrire » et annule son timer. */
+  const stopTyping = useCallback((name: string) => {
+    const timer = typingTimersRef.current.get(name);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      typingTimersRef.current.delete(name);
+    }
+    setTypingUsers((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : prev));
+  }, []);
+
+  /** Purge tous les indicateurs de frappe (reset de salon, déconnexion, démontage). */
+  const clearAllTyping = useCallback(() => {
+    for (const timer of typingTimersRef.current.values()) window.clearTimeout(timer);
+    typingTimersRef.current.clear();
+    setTypingUsers([]);
+  }, []);
+
+  /** Annule les « a quitté » en attente (reset de salon, déconnexion, démontage). */
+  const clearPendingLeaves = useCallback(() => {
+    for (const timer of pendingLeaveRef.current.values()) window.clearTimeout(timer);
+    pendingLeaveRef.current.clear();
   }, []);
 
   const clearReconnectTimer = useCallback(() => {
@@ -208,29 +240,70 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
           markHistoryLoaded();
           setMessages((prev) => [...prev, serverEvent.message]);
           break;
-        case "join":
+        case "join": {
           markHistoryLoaded();
-          pushActivityToast("join", serverEvent.username);
+          const name = serverEvent.username;
+          const pending = pendingLeaveRef.current.get(name);
+          if (pending !== undefined) {
+            // La personne revient (rafraîchissement / reconnexion) : on annule son
+            // « a quitté » en attente et on n'affiche pas non plus de « a rejoint ».
+            window.clearTimeout(pending);
+            pendingLeaveRef.current.delete(name);
+          } else {
+            pushActivityToast("join", name);
+          }
           setUserCount(serverEvent.userCount);
           break;
-        case "leave":
+        }
+        case "leave": {
           markHistoryLoaded();
-          pushActivityToast("leave", serverEvent.username);
+          const name = serverEvent.username;
+          // Délai de grâce : un rafraîchissement enchaîne leave puis join très vite.
+          // On n'affiche « a quitté » que si la personne n'est pas revenue et n'a pas
+          // un autre onglet encore connecté (connectedUsers est dédupliqué par pseudo).
+          const existing = pendingLeaveRef.current.get(name);
+          if (existing !== undefined) window.clearTimeout(existing);
+          pendingLeaveRef.current.set(
+            name,
+            window.setTimeout(() => {
+              pendingLeaveRef.current.delete(name);
+              if (!connectedUsersRef.current.includes(name)) {
+                pushActivityToast("leave", name);
+              }
+            }, LEAVE_GRACE_MS),
+          );
           setUserCount(serverEvent.userCount);
           break;
+        }
         case "users":
           markHistoryLoaded();
           setUserCount(serverEvent.count);
           setConnectedUsers(serverEvent.usernames);
+          connectedUsersRef.current = serverEvent.usernames;
+          // Purge la frappe des utilisateurs qui ne sont plus connectés
+          // (corrige l'indicateur bloqué après une déconnexion brutale en cours de frappe).
+          {
+            const present = new Set(serverEvent.usernames);
+            for (const name of [...typingTimersRef.current.keys()]) {
+              if (!present.has(name)) stopTyping(name);
+            }
+            setTypingUsers((prev) => prev.filter((name) => present.has(name)));
+          }
           break;
         case "typing":
-          setTypingUsers((prev) => {
-            if (!serverEvent.isTyping) {
-              return prev.filter((name) => name !== serverEvent.username);
-            }
-            if (prev.includes(serverEvent.username)) return prev;
-            return [...prev, serverEvent.username];
-          });
+          if (serverEvent.isTyping) {
+            const name = serverEvent.username;
+            setTypingUsers((prev) => (prev.includes(name) ? prev : [...prev, name]));
+            const existing = typingTimersRef.current.get(name);
+            if (existing !== undefined) window.clearTimeout(existing);
+            // Filet de sécurité : purge si le « stop » n'arrive jamais (onglet fermé brutalement).
+            typingTimersRef.current.set(
+              name,
+              window.setTimeout(() => stopTyping(name), TYPING_TIMEOUT_MS),
+            );
+          } else {
+            stopTyping(serverEvent.username);
+          }
           break;
         case "reads":
           setReads(() => {
@@ -279,6 +352,9 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       }
 
       if (event.code === 1008) {
+        // Fermeture définitive (bannissement, session invalide) : pas de reconnexion
+        // automatique NI de bouton « Réessayer » — réessayer échouerait pareil.
+        setTerminal(true);
         setConnectionStatus("disconnected");
         setError(event.reason || "Connexion refusée. Vérifiez votre pseudo ou le salon.");
         return;
@@ -304,17 +380,22 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       setConnectionStatus("disconnected");
       setHistoryLoaded(false);
       setError(null);
+      clearAllTyping();
+      clearPendingLeaves();
       return;
     }
 
     intentionalCloseRef.current = false;
     reconnectAttemptRef.current = 0;
     setError(null);
+    setTerminal(false);
     setHistoryLoaded(false);
     setMessages([]);
-    setTypingUsers([]);
+    clearAllTyping();
+    clearPendingLeaves();
     setUserCount(0);
     setConnectedUsers([]);
+    connectedUsersRef.current = [];
     setReads({});
     lastReadSentRef.current = 0;
     setActivityToasts([]);
@@ -328,6 +409,8 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
       clearReconnectTimer();
       clearHistoryTimeout();
       closeActiveSocket();
+      clearAllTyping();
+      clearPendingLeaves();
     };
   }, [
     slug,
@@ -336,6 +419,8 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     clearReconnectTimer,
     clearHistoryTimeout,
     closeActiveSocket,
+    clearAllTyping,
+    clearPendingLeaves,
   ]);
 
   const sendMessage = useCallback((content: string) => {
@@ -382,6 +467,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     reconnectAttemptRef.current = 0;
     clearReconnectTimer();
     setError(null);
+    setTerminal(false);
     connectRef.current();
   }, [enabled, username, clearReconnectTimer]);
 
@@ -394,6 +480,7 @@ export function useChatWebSocket({ slug, username, enabled }: UseChatWebSocketOp
     connectionStatus,
     historyLoaded,
     error,
+    terminal,
     ownerUsername,
     isOwner,
     sendMessage,

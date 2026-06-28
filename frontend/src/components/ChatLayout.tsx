@@ -85,6 +85,7 @@ export function ChatLayout() {
     connectionStatus,
     historyLoaded,
     error,
+    terminal,
     ownerUsername,
     isOwner,
     sendMessage,
@@ -283,7 +284,7 @@ export function ChatLayout() {
             <ErrorBanner
               message={error}
               onDismiss={handleDismissError}
-              onRetry={connectionStatus === "disconnected" ? handleRetry : undefined}
+              onRetry={connectionStatus === "disconnected" && !terminal ? handleRetry : undefined}
             />
           </motion.div>
         )}

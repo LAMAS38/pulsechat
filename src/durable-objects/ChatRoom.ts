@@ -95,12 +95,21 @@ export class ChatRoom extends DurableObject<Env> {
       /* on garde la valeur précédente */
     }
 
-    // Enforcement du bannissement dès le handshake.
+    // Enforcement du bannissement dès le handshake. On ACCEPTE le WebSocket puis
+    // on le ferme aussitôt avec le code 1008 + un motif. Un rejet HTTP 403 serait
+    // invisible côté navigateur (onclose code 1006) et déclencherait une boucle de
+    // reconnexion (« connexion instable »). Le 1008 + motif permet au client
+    // d'afficher la raison du bannissement et d'arrêter les tentatives.
     if (isBanned(this.ctx.storage.sql, userId)) {
-      return new Response(
+      const banPair = new WebSocketPair();
+      const banClient = banPair[0];
+      const banServer = banPair[1];
+      banServer.accept();
+      banServer.send(
         serializeEvent({ type: "error", code: "banned", message: "Vous êtes banni de ce salon" }),
-        { status: 403, headers: { "Content-Type": "application/json" } },
       );
+      banServer.close(1008, "Vous êtes banni de ce salon");
+      return new Response(null, { status: 101, webSocket: banClient });
     }
 
     const pair = new WebSocketPair();
@@ -284,7 +293,7 @@ export class ChatRoom extends DurableObject<Env> {
       addBan(this.ctx.storage.sql, session.userId, session.username);
       this.send(socket, { type: "error", code: "banned", message: "Vous avez été banni de ce salon" });
       try {
-        socket.close(1008, "banned");
+        socket.close(1008, "Vous avez été banni de ce salon");
       } catch {
         /* socket déjà fermé */
       }

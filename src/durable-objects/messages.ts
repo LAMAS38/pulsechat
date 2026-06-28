@@ -30,7 +30,10 @@ export function fetchMessageHistory(
   const cursor = sql.exec(
     `SELECT id, username, content, created_at
      FROM messages
-     ORDER BY created_at DESC
+     -- Tri par id (clé primaire monotone) et NON par created_at : datetime('now')
+     -- a une précision à la seconde, insuffisante pour départager des messages
+     -- envoyés dans la même seconde. id garantit l'ordre d'insertion réel.
+     ORDER BY id DESC
      LIMIT ?`,
     limit,
   );
